@@ -10,6 +10,7 @@ use std::env;
 use std::error::Error;
 use std::fs;
 use std::fs::File;
+use std::io;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Read;
@@ -17,6 +18,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::iter;
+use std::ops::AddAssign;
 
 struct Config {
 	expand_tabs: bool,
@@ -30,6 +32,28 @@ const DEFAULT_CONFIG: Config =
 		tab_size: 4,
 		line_length: 80,
 	};
+
+struct CheckResult {
+	fixable_errors: u64,
+	unfixable_errors: u64,
+}
+
+impl AddAssign for CheckResult {
+
+	fn add_assign (
+		& mut self,
+		other: CheckResult,
+	) {
+
+		self.fixable_errors +=
+			other.fixable_errors;
+
+		self.unfixable_errors +=
+			other.unfixable_errors;
+
+	}
+
+}
 
 fn find_modeline (
 	input: & mut Read,
@@ -135,10 +159,16 @@ fn config_from_modeline (
 fn check_line (
 	config: & Config,
 	line: & str,
-) -> bool {
+) -> CheckResult {
+
+	let mut check_result =
+		CheckResult {
+			fixable_errors: 0,
+			unfixable_errors: 0,
+		};
 
 	if config.expand_tabs && line.contains ('\t') {
-		return false;
+		check_result.fixable_errors += 1
 	}
 
 	if
@@ -154,15 +184,15 @@ fn check_line (
 		)
 
 	{
-		return false;
+		check_result.unfixable_errors += 1;
 	}
 
 	if line.ends_with ('\r') {
-		return false;
+		check_result.fixable_errors += 1
 	}
 
 	if line.ends_with ("\r\n") {
-		return false;
+		check_result.fixable_errors += 1
 	}
 
 	if line.len () > 1 {
@@ -170,13 +200,43 @@ fn check_line (
 		let mut line_chars =
 			line.chars ();
 
-		line_chars.next_back ();
-
 		let last_character =
 			line_chars.next_back ().unwrap ();
 
-		if last_character.is_whitespace () {
-			return false;
+		let second_last_character =
+			line_chars.next_back ().unwrap ();
+
+		if line.len () > 2 {
+
+			let third_last_character =
+				line_chars.next_back ().unwrap ();
+
+			if (
+				last_character == '\n'
+				&& second_last_character == '\r'
+				&& third_last_character.is_whitespace ()
+			) || (
+				last_character == '\n'
+				&& second_last_character.is_whitespace ()
+			) || (
+				last_character == '\r'
+				&& second_last_character.is_whitespace ()
+			) {
+				check_result.fixable_errors += 1
+			}
+
+		} else {
+
+			if (
+				last_character == '\n'
+				&& second_last_character.is_whitespace ()
+			) || (
+				last_character == '\r'
+				&& second_last_character.is_whitespace ()
+			) {
+				check_result.fixable_errors += 1
+			}
+
 		}
 
 	}
@@ -187,17 +247,17 @@ fn check_line (
 			- 1;
 
 	if line_len > config.line_length {
-		return false;
+		check_result.unfixable_errors += 1
 	}
 
-	true
+	check_result
 
 }
 
 fn check_file (
 	config: & Config,
 	input: & mut Read,
-) -> Result <bool, String> {
+) -> Result <CheckResult, String> {
 
 	let mut buf_reader =
 		BufReader::new (
@@ -205,6 +265,12 @@ fn check_file (
 
 	let mut line =
 		String::new ();
+
+	let mut check_result =
+		CheckResult {
+			fixable_errors: 0,
+			unfixable_errors: 0,
+		};
 
 	loop {
 
@@ -214,17 +280,15 @@ fn check_file (
 			& mut line) {
 
 			Ok (0) =>
-				return Ok (true),
+				return Ok (
+					check_result),
 
 			Ok (_) => {
 
-				if ! check_line (
-					config,
-					& line) {
-					
-					return Ok (false);
-
-				}
+				check_result +=
+					check_line (
+						config,
+						& line);
 
 			},
 
@@ -248,9 +312,13 @@ fn fix_line <'a> (
 	line: & 'a str,
 ) -> Cow <'a, str> {
 
-	if check_line (
-		config,
-		& line) {
+	let check_result =
+		check_line (
+			config,
+			& line);
+
+	if check_result.fixable_errors == 0
+	&& check_result.unfixable_errors == 0 {
 
 		return Cow::Borrowed (
 			line);
@@ -439,7 +507,7 @@ fn fix_line <'a> (
 
 		fixes_applied.push (
 			"line too long");
-	
+
 	}
 
 	// print a message
@@ -605,15 +673,21 @@ fn do_file (
 
 	}
 
-	match check_file (
-		& config,
-		& mut file) {
+	let check_result =
+		match check_file (
+			& config,
+			& mut file) {
 
-		Ok (true) =>
-			return,
+		Ok (check_result) => {
 
-		Ok (false) =>
-			(),
+			if check_result.fixable_errors == 0
+			&& check_result.unfixable_errors == 0 {
+				return;
+			}
+
+			check_result
+
+		},
 
 		Err (error) => {
 
@@ -630,128 +704,156 @@ fn do_file (
 
 	// third pass - correct or report problems
 
-	match file.seek (
-		SeekFrom::Start (0)) {
+	if check_result.fixable_errors > 0 {
 
-		Ok (_) =>
-			(),
+		match file.seek (
+			SeekFrom::Start (0)) {
 
-		Err (error) => {
+			Ok (_) =>
+				(),
 
-			println! (
-				"Error reading {}: {}",
-				filename,
-				error.description ());
+			Err (error) => {
 
-			return;
+				println! (
+					"Error reading {}: {}",
+					filename,
+					error.description ());
 
-		}
+				return;
 
-	}
-
-	let output_filename =
-		format! (
-			"{}.tmp",
-			filename);
-
-	let mut output =
-		match File::create (
-			& output_filename) {
-
-		Ok (file) =>
-			file,
-
-		Err (error) => {
-
-			println! (
-				"Error creating {}: {}",
-				output_filename,
-				error.description ());
-
-			return;
-
-		},
-
-	};
-
-	match fix_file (
-		& config,
-		filename,
-		& mut file,
-		& mut output) {
-
-		Ok (_) =>
-			(),
-
-		Err (error) => {
-
-			println! (
-				"Error fixing {}: {}",
-				filename,
-				error);
-
-			return;
+			}
 
 		}
 
-	};
+		let output_filename =
+			format! (
+				"{}.tmp",
+				filename);
 
-    let metadata =
-    	match std::fs::metadata (
-    		filename) {
+		let mut output =
+			match File::create (
+				& output_filename) {
 
-		Ok (metadata) =>
-			metadata,
+			Ok (file) =>
+				file,
 
-		Err (error) => {
+			Err (error) => {
 
-			println! (
-				"Error reading permissions for {}: {}",
-				filename,
-				error.description ());
+				println! (
+					"Error creating {}: {}",
+					output_filename,
+					error.description ());
 
-			return;
+				return;
 
-		},
+			},
 
-    };
+		};
 
-	match fs::set_permissions (
-		& output_filename,
-		metadata.permissions ()) {
+		match fix_file (
+			& config,
+			filename,
+			& mut file,
+			& mut output) {
 
-		Ok (_) =>
-			(),
+			Ok (_) =>
+				(),
 
-		Err (error) => {
+			Err (error) => {
 
-			println! (
-				"Error setting permissions for {}: {}",
-				output_filename,
-				error.description ());
+				println! (
+					"Error fixing {}: {}",
+					filename,
+					error);
 
-			return;
+				return;
+
+			}
+
+		};
+
+		let metadata =
+			match std::fs::metadata (
+				filename) {
+
+			Ok (metadata) =>
+				metadata,
+
+			Err (error) => {
+
+				println! (
+					"Error reading permissions for {}: {}",
+					filename,
+					error.description ());
+
+				return;
+
+			},
+
+		};
+
+		match fs::set_permissions (
+			& output_filename,
+			metadata.permissions ()) {
+
+			Ok (_) =>
+				(),
+
+			Err (error) => {
+
+				println! (
+					"Error setting permissions for {}: {}",
+					output_filename,
+					error.description ());
+
+				return;
+
+			}
+
+		};
+
+		match fs::rename (
+			& output_filename,
+			filename) {
+
+			Ok (_) =>
+				(),
+
+			Err (error) => {
+
+				println! (
+					"Error renaming {} to {}: {}",
+					output_filename,
+					filename,
+					error.description ());
+
+			}
 
 		}
 
-	};
+	} else {
 
-	match fs::rename (
-		& output_filename,
-		filename) {
+		match fix_file (
+			& config,
+			filename,
+			& mut file,
+			& mut io::sink ()) {
 
-		Ok (_) =>
-			(),
+			Ok (_) =>
+				(),
 
-		Err (error) => {
+			Err (error) => {
 
-			println! (
-				"Error renaming {} to {}: {}",
-				output_filename,
-				filename,
-				error.description ());
+				println! (
+					"Error fixing {}: {}",
+					filename,
+					error);
 
-		}
+				return;
+
+			}
+
+		};
 
 	}
 
