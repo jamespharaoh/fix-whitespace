@@ -1,7 +1,9 @@
 [package]
 name = "fix-whitespace"
+description = "Detect and correct whitespace issues in text files"
 version = "1.0.0"
 authors = [ "James Pharaoh <james@pharaoh.uk>" ]
+license = "apache"
 
 [dependencies]
 lazy_static = "0.2"
