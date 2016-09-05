@@ -704,26 +704,26 @@ fn do_file (
 
 	// third pass - correct or report problems
 
-	if check_result.fixable_errors > 0 {
+	match file.seek (
+		SeekFrom::Start (0)) {
 
-		match file.seek (
-			SeekFrom::Start (0)) {
+		Ok (_) =>
+			(),
 
-			Ok (_) =>
-				(),
+		Err (error) => {
 
-			Err (error) => {
+			println! (
+				"Error reading {}: {}",
+				filename,
+				error.description ());
 
-				println! (
-					"Error reading {}: {}",
-					filename,
-					error.description ());
-
-				return;
-
-			}
+			return;
 
 		}
+
+	}
+
+	if check_result.fixable_errors > 0 {
 
 		let output_filename =
 			format! (
