@@ -4,6 +4,9 @@ description = "Detect and correct whitespace issues in text files"
 version = "1.0.0"
 authors = [ "James Pharaoh <james@pharaoh.uk>" ]
 license = "Apache-2.0"
+homepage = "https://gitlab.wellbehavedsoftware.com/james/fix-whitespace"
+repository = "https://gitlab.wellbehavedsoftware.com/james/fix-whitespace"
+readme = "README.md"
 
 [dependencies]
 lazy_static = "0.2"
