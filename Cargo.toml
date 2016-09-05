@@ -1,0 +1,8 @@
+[package]
+name = "fix-whitespace"
+version = "1.0.0"
+authors = [ "James Pharaoh <james@pharaoh.uk>" ]
+
+[dependencies]
+lazy_static = "0.2"
+regex = "0.1"
