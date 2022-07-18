@@ -8,10 +8,6 @@ being run automatically from a hook.
 
 The project's home is at:
 
-* https://gitlab.wellbehavedsoftware.com/james/fix-whitespace
-
-The project is also available from:
-
 * https://github.com/jamespharaoh/fix-whitespace
 * https://crates.io/crates/fix-whitespace
 
