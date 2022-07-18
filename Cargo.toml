@@ -1,13 +1,17 @@
 [package]
-name = "fix-whitespace"
-description = "Detect and correct whitespace issues in text files"
-version = "1.0.2"
-authors = [ "James Pharaoh <james@pharaoh.uk>" ]
-license = "Apache-2.0"
-homepage = "https://gitlab.wellbehavedsoftware.com/james/fix-whitespace"
-repository = "https://gitlab.wellbehavedsoftware.com/james/fix-whitespace"
-readme = "README.md"
+
+	name = "fix-whitespace"
+	version = "1.0.2"
+	authors = [ "James Pharaoh <james@pharaoh.uk>" ]
+	edition = "2021"
+	description = "Detect and correct whitespace issues in text files"
+	readme = "README.md"
+	homepage = "https://gitlab.wellbehavedsoftware.com/james/fix-whitespace"
+	repository = "https://gitlab.wellbehavedsoftware.com/james/fix-whitespace"
+	license = "Apache-2.0"
 
 [dependencies]
-lazy_static = "0.2"
-regex = "0.1"
+
+	clap = { version = "3.2", features = [ "derive", "env" ] }
+	lazy_static = "1.4"
+	regex = "1.6"
